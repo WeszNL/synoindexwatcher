@@ -105,7 +105,7 @@ def read_config():
 
     loglevel = config.get("GLOBAL", "loglevel", fallback=None)
     if loglevel and not loglevel in constants.ALLOWED_LOGLEVELS:
-        print("synoindexwatcher: error: option loglevel: invalid choice: '%s' (choose from '%s')"
+        print("synoindexwatcher: error: option loglevel: invalid choice: '%s' (choose from '%s')")
             % (loglevel, "', '".join(constants.ALLOWED_LOGLEVELS)))
         sys.exit(1)
     return config
@@ -196,6 +196,7 @@ def start():
 
         logging.info("Waiting for media file changes...")
         modified_files = set()
+        moved_from = {}  # Initialize the moved_from dictionary
         while True:
             for event in inotify.read():
                 is_dir = event.mask & flags.ISDIR
@@ -212,6 +213,17 @@ def start():
                 elif event.mask & flags.CLOSE_WRITE and (fullpath in modified_files):
                     modified_files.remove(fullpath)
                     add_to_index(fullpath, is_dir)
+                
+                # Handle moved_from events
+                if event.mask & flags.MOVED_FROM:
+                    moved_from[event.cookie] = event.name
+                elif event.mask & flags.MOVED_TO:
+                    if event.cookie in moved_from:
+                        # Use the moved_from data
+                        old_name = moved_from.pop(event.cookie)
+                        logging.info(f"Moved from {old_name} to {event.name}")
+                    else:
+                        logging.warning(f"No matching moved_from event for {event.name}")
     except OSError as e:
         if e.errno == 28:
             logging.error("No inode watchers left (see https://github.com/letorbi/synoindexwatcher#faq)")
